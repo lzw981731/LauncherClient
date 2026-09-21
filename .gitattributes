@@ -1,0 +1,2 @@
+# 确保 bat 在 Windows 检出为 CRLF（cmd 兼容）
+*.bat text eol=crlf

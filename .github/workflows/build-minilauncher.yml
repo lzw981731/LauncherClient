@@ -1,0 +1,36 @@
+name: Build MiniLauncher
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'MiniLauncher/**'
+      - '.github/workflows/build-minilauncher.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Windows 自带 .NET Framework csc.exe 编译，无需 Visual Studio / NuGet
+      - name: Compile MiniLauncher
+        shell: cmd
+        working-directory: MiniLauncher
+        run: |
+          call 编译.bat
+
+      - name: Verify output
+        shell: cmd
+        working-directory: MiniLauncher
+        run: |
+          dir MiniLauncher.exe
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MiniLauncher
+          path: MiniLauncher/MiniLauncher.exe
+          retention-days: 30
