@@ -16,10 +16,11 @@ if not exist "%CSC%" (
     exit /b 1
 )
 
-rem ---- 定位参考程序集目录 ----
-set "REF=%WINDIR%\Microsoft.NET\Framework64\v4.0.30319"
-if exist "%ProgramFiles(x86)%\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8" set "REF=%ProgramFiles(x86)%\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8"
-if exist "%ProgramFiles%\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8" set "REF=%ProgramFiles%\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8"
+rem ---- 定位参考程序集目录（只用一个，避免重复引用）----
+set "REF="
+if exist "%ProgramFiles(x86)%\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8\System.dll" set "REF=%ProgramFiles(x86)%\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8"
+if not defined REF if exist "%ProgramFiles%\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8\System.dll" set "REF=%ProgramFiles%\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8"
+if not defined REF set "REF=%WINDIR%\Microsoft.NET\Framework64\v4.0.30319"
 
 echo 编译器: %CSC%
 echo 引用目录: %REF%
