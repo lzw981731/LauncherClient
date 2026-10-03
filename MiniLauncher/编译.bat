@@ -7,32 +7,29 @@ rem ============================================================
 chcp 65001 >nul
 cd /d "%~dp0"
 
-rem ---- 定位 csc.exe（优先 64 位）----
-set "CSC=%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
-if not exist "%CSC%" set "CSC=%WINDIR%\Microsoft.NET\Framework\v4.0.30319\csc.exe"
+rem ---- 定位 csc.exe 和框架目录（统一使用同一目录，避免重复引用）----
+set "FWDIR=%WINDIR%\Microsoft.NET\Framework64\v4.0.30319"
+set "CSC=%FWDIR%\csc.exe"
+if not exist "%CSC%" (
+    set "FWDIR=%WINDIR%\Microsoft.NET\Framework\v4.0.30319"
+    set "CSC=%FWDIR%\csc.exe"
+)
 if not exist "%CSC%" (
     echo [ERROR] 找不到 csc.exe，请确认系统装有 .NET Framework 4.x
     pause
     exit /b 1
 )
 
-rem ---- 定位参考程序集目录（只用一个，避免重复引用）----
-set "REF="
-if exist "%ProgramFiles(x86)%\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8\System.dll" set "REF=%ProgramFiles(x86)%\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8"
-if not defined REF if exist "%ProgramFiles%\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8\System.dll" set "REF=%ProgramFiles%\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8"
-if not defined REF set "REF=%WINDIR%\Microsoft.NET\Framework64\v4.0.30319"
-
 echo 编译器: %CSC%
-echo 引用目录: %REF%
 echo.
 
 "%CSC%" /nologo /target:winexe /unsafe /codepage:65001 /out:MiniLauncher.exe ^
-    /r:"%REF%\System.dll" ^
-    /r:"%REF%\System.Core.dll" ^
-    /r:"%REF%\System.Windows.Forms.dll" ^
-    /r:"%REF%\System.Drawing.dll" ^
-    /r:"%REF%\System.Xml.dll" ^
-    /r:"%REF%\System.IO.Compression.dll" ^
+    /r:"%FWDIR%\System.dll" ^
+    /r:"%FWDIR%\System.Core.dll" ^
+    /r:"%FWDIR%\System.Windows.Forms.dll" ^
+    /r:"%FWDIR%\System.Drawing.dll" ^
+    /r:"%FWDIR%\System.Xml.dll" ^
+    /r:"%FWDIR%\System.IO.Compression.dll" ^
     *.cs
 
 if %errorlevel%==0 (
