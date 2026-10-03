@@ -1,9 +1,10 @@
-// MiniLauncher —— 极简 KartRider 登录器
-// 只保留三个参数：服务器IP / 服务器端口 / 角色名称
+// MiniLauncher —— 极简 KartRider 登录器（含账号注册/登录）
+// 三个参数：服务器IP / 服务器端口 / 角色名称
 // 传给 KartRider.exe 的内容与原版 Launcher_V2 完全一致：
 //   1. 命令行: KartRider.exe TGC -region:3 -passport:<Base64 JSON>
 //   2. PIN 文件: 登录服务器 LoginServers 改写 + 移除 NgsOn
 //   3. 启动后: TCP 检测到连接即恢复原始 PIN 文件
+// 新增：账号注册/登录（HTTP API :39314），登录后自动填入绑定昵称
 // 编译: 双击 编译.bat（Windows 自带 .NET Framework csc.exe，无需 Visual Studio）
 
 using System;
@@ -37,11 +38,41 @@ namespace KartRider
         private TextBox txtLog;
         private Button btnStart;
 
+        // 账号系统控件
+        private TabControl tabMode;
+        private TabPage tabDirect;
+        private TabPage tabAccount;
+        private TextBox txtUsername;
+        private TextBox txtPassword;
+        private TextBox txtRegUser;
+        private TextBox txtRegPass;
+        private TextBox txtRegNick;
+        private Button btnLogin;
+        private Button btnRegister;
+        private Label lblAccountStatus;
+
+        // 账号 API 基地址（从 IP+端口 推导）
+        private string AccountApiBase
+        {
+            get
+            {
+                string ip = txtIp.Text.Trim();
+                string portStr = txtPort.Text.Trim();
+                if (string.IsNullOrEmpty(ip) || string.IsNullOrEmpty(portStr))
+                    return "";
+                // 账号 API 端口 = 游戏端口 + 3
+                ushort port;
+                if (ushort.TryParse(portStr, out port))
+                    return string.Format("http://{0}:{1}", ip, port + 3);
+                return "";
+            }
+        }
+
         public MiniLauncherForm()
         {
             Text = "KartRider 登录器 Mini";
             Font = new Font("Microsoft YaHei", 9f);
-            ClientSize = new Size(430, 400);
+            ClientSize = new Size(460, 520);
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
@@ -49,23 +80,168 @@ namespace KartRider
             int y = 16;
 
             txtIp = NewTextBox();
-            y = AddRow("服务器IP:", txtIp, y, 180);
+            y = AddRow("服务器IP:", txtIp, y, 200);
 
             txtPort = NewTextBox();
-            y = AddRow("服务器端口:", txtPort, y, 80);
+            y = AddRow("服务器端口:", txtPort, y, 100);
 
-            txtName = NewTextBox();
-            y = AddRow("角色名称:", txtName, y, 180);
+            // 模式切换 TabControl
+            tabMode = new TabControl();
+            tabMode.Location = new Point(16, y);
+            tabMode.Size = new Size(ClientSize.Width - 32, 200);
+            tabMode.Font = Font;
+
+            // ---- 直接登录 Tab ----
+            tabDirect = new TabPage("直接登录");
+            tabDirect.Font = Font;
+            {
+                int ty = 12;
+                Label lb = new Label();
+                lb.Text = "输入角色名称直接进入游戏（无需账号）";
+                lb.AutoSize = true;
+                lb.Location = new Point(12, ty);
+                lb.ForeColor = Color.Gray;
+                tabDirect.Controls.Add(lb);
+                ty += 28;
+
+                Label lbName = new Label();
+                lbName.Text = "角色名称:";
+                lbName.AutoSize = true;
+                lbName.Location = new Point(12, ty + 3);
+                tabDirect.Controls.Add(lbName);
+
+                txtName = NewTextBox();
+                txtName.Location = new Point(100, ty);
+                txtName.Size = new Size(200, 24);
+                tabDirect.Controls.Add(txtName);
+            }
+            tabMode.TabPages.Add(tabDirect);
+
+            // ---- 账号登录 Tab ----
+            tabAccount = new TabPage("账号登录");
+            tabAccount.Font = Font;
+            {
+                int ty = 10;
+
+                // 登录区
+                Label lbLogin = new Label();
+                lbLogin.Text = "── 登录 ──";
+                lbLogin.AutoSize = true;
+                lbLogin.Location = new Point(12, ty);
+                lbLogin.Font = new Font(Font.FontFamily, 8f, FontStyle.Bold);
+                tabAccount.Controls.Add(lbLogin);
+                ty += 22;
+
+                Label lbUser = new Label();
+                lbUser.Text = "账号:";
+                lbUser.AutoSize = true;
+                lbUser.Location = new Point(12, ty + 3);
+                tabAccount.Controls.Add(lbUser);
+
+                txtUsername = NewTextBox();
+                txtUsername.Location = new Point(70, ty);
+                txtUsername.Size = new Size(150, 24);
+                tabAccount.Controls.Add(txtUsername);
+                ty += 30;
+
+                Label lbPass = new Label();
+                lbPass.Text = "密码:";
+                lbPass.AutoSize = true;
+                lbPass.Location = new Point(12, ty + 3);
+                tabAccount.Controls.Add(lbPass);
+
+                txtPassword = NewTextBox();
+                txtPassword.Location = new Point(70, ty);
+                txtPassword.Size = new Size(150, 24);
+                txtPassword.UseSystemPasswordChar = true;
+                tabAccount.Controls.Add(txtPassword);
+
+                btnLogin = new Button();
+                btnLogin.Text = "登录";
+                btnLogin.Size = new Size(60, 26);
+                btnLogin.Location = new Point(230, ty - 1);
+                btnLogin.Font = new Font(Font.FontFamily, 8f);
+                btnLogin.Click += delegate { DoLogin(); };
+                tabAccount.Controls.Add(btnLogin);
+                ty += 36;
+
+                // 注册区
+                Label lbReg = new Label();
+                lbReg.Text = "── 注册 ──";
+                lbReg.AutoSize = true;
+                lbReg.Location = new Point(12, ty);
+                lbReg.Font = new Font(Font.FontFamily, 8f, FontStyle.Bold);
+                tabAccount.Controls.Add(lbReg);
+                ty += 22;
+
+                Label lbRU = new Label();
+                lbRU.Text = "账号:";
+                lbRU.AutoSize = true;
+                lbRU.Location = new Point(12, ty + 3);
+                tabAccount.Controls.Add(lbRU);
+
+                txtRegUser = NewTextBox();
+                txtRegUser.Location = new Point(70, ty);
+                txtRegUser.Size = new Size(150, 24);
+                tabAccount.Controls.Add(txtRegUser);
+                ty += 30;
+
+                Label lbRP = new Label();
+                lbRP.Text = "密码:";
+                lbRP.AutoSize = true;
+                lbRP.Location = new Point(12, ty + 3);
+                tabAccount.Controls.Add(lbRP);
+
+                txtRegPass = NewTextBox();
+                txtRegPass.Location = new Point(70, ty);
+                txtRegPass.Size = new Size(150, 24);
+                txtRegPass.UseSystemPasswordChar = true;
+                tabAccount.Controls.Add(txtRegPass);
+                ty += 30;
+
+                Label lbRN = new Label();
+                lbRN.Text = "昵称:";
+                lbRN.AutoSize = true;
+                lbRN.Location = new Point(12, ty + 3);
+                tabAccount.Controls.Add(lbRN);
+
+                txtRegNick = NewTextBox();
+                txtRegNick.Location = new Point(70, ty);
+                txtRegNick.Size = new Size(150, 24);
+                tabAccount.Controls.Add(txtRegNick);
+
+                btnRegister = new Button();
+                btnRegister.Text = "注册";
+                btnRegister.Size = new Size(60, 26);
+                btnRegister.Location = new Point(230, ty - 1);
+                btnRegister.Font = new Font(Font.FontFamily, 8f);
+                btnRegister.Click += delegate { DoRegister(); };
+                tabAccount.Controls.Add(btnRegister);
+            }
+            tabMode.TabPages.Add(tabAccount);
+
+            Controls.Add(tabMode);
+            y += tabMode.Height + 8;
+
+            // 账号状态栏
+            lblAccountStatus = new Label();
+            lblAccountStatus.Text = "";
+            lblAccountStatus.AutoSize = true;
+            lblAccountStatus.Location = new Point(16, y);
+            lblAccountStatus.Font = new Font(Font.FontFamily, 8f);
+            lblAccountStatus.ForeColor = Color.DarkGreen;
+            Controls.Add(lblAccountStatus);
+            y += 20;
 
             btnStart = new Button();
             btnStart.Text = "启动游戏";
             btnStart.Size = new Size(130, 34);
-            btnStart.Location = new Point(150, y + 4);
+            btnStart.Location = new Point(165, y + 2);
             btnStart.Font = Font;
             btnStart.Click += delegate { StartClicked(); };
             Controls.Add(btnStart);
 
-            y += 50;
+            y += 46;
 
             txtLog = new TextBox();
             txtLog.Multiline = true;
@@ -76,8 +252,17 @@ namespace KartRider
             txtLog.Font = new Font("Consolas", 9f);
             Controls.Add(txtLog);
 
+            // Tab 切换时同步 txtName
+            tabMode.SelectedIndexChanged += delegate
+            {
+                if (tabMode.SelectedTab == tabDirect)
+                {
+                    lblAccountStatus.Text = "";
+                }
+            };
+
             LoadConfig();
-            Log("就绪。填写 服务器IP / 端口 / 角色名称 后点击启动。");
+            Log("就绪。选择「直接登录」或「账号登录」模式。");
         }
 
         private TextBox NewTextBox()
@@ -101,6 +286,229 @@ namespace KartRider
             return y + 34;
         }
 
+        // ============ 账号 API ============
+
+        private void DoLogin()
+        {
+            string apiBase = AccountApiBase;
+            if (string.IsNullOrEmpty(apiBase))
+            {
+                Log("错误：请先填写服务器IP和端口");
+                return;
+            }
+
+            string username = txtUsername.Text.Trim();
+            string password = txtPassword.Text.Trim();
+            if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password))
+            {
+                Log("错误：请输入账号和密码");
+                return;
+            }
+
+            btnLogin.Enabled = false;
+            btnLogin.Text = "登录中...";
+
+            string json = string.Format("{{\"username\":\"{0}\",\"password\":\"{1}\"}}",
+                JsonEscape(username), JsonEscape(password));
+
+            Thread t = new Thread(delegate()
+            {
+                try
+                {
+                    string result = HttpPost(apiBase + "/login", json);
+                    Log("登录响应: " + result);
+
+                    // 简易 JSON 解析（不依赖 Newtonsoft/System.Text.Json）
+                    if (ContainsValue(result, "\"ok\"", "true"))
+                    {
+                        string nickname = ExtractString(result, "nickname");
+                        string token = ExtractString(result, "token");
+                        Log("登录成功！绑定昵称: " + nickname);
+
+                        SetAccountStatus("已登录: " + username + " → " + nickname);
+
+                        // 自动填入昵称到直接登录框
+                        SetTextSafe(txtName, nickname);
+                        SetTextSafe(txtUsername, username);
+
+                        // 保存账号信息到配置
+                        SaveAccountConfig(username, nickname);
+                    }
+                    else
+                    {
+                        string msg = ExtractString(result, "msg");
+                        Log("登录失败: " + msg);
+                        SetAccountStatus("登录失败");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Log("登录请求失败: " + ex.Message);
+                    SetAccountStatus("连接失败");
+                }
+                finally
+                {
+                    SetButtonSafe(btnLogin, true, "登录");
+                }
+            });
+            t.IsBackground = true;
+            t.Start();
+        }
+
+        private void DoRegister()
+        {
+            string apiBase = AccountApiBase;
+            if (string.IsNullOrEmpty(apiBase))
+            {
+                Log("错误：请先填写服务器IP和端口");
+                return;
+            }
+
+            string username = txtRegUser.Text.Trim();
+            string password = txtRegPass.Text.Trim();
+            string nickname = txtRegNick.Text.Trim();
+            if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password) || string.IsNullOrEmpty(nickname))
+            {
+                Log("错误：请填写注册账号、密码和昵称");
+                return;
+            }
+
+            btnRegister.Enabled = false;
+            btnRegister.Text = "注册中...";
+
+            string json = string.Format("{{\"username\":\"{0}\",\"password\":\"{1}\",\"nickname\":\"{2}\"}}",
+                JsonEscape(username), JsonEscape(password), JsonEscape(nickname));
+
+            Thread t = new Thread(delegate()
+            {
+                try
+                {
+                    string result = HttpPost(apiBase + "/register", json);
+                    Log("注册响应: " + result);
+
+                    if (ContainsValue(result, "\"ok\"", "true"))
+                    {
+                        Log("注册成功！账号: " + username + " 昵称: " + nickname);
+                        SetAccountStatus("注册成功，请登录");
+
+                        // 自动填入登录框
+                        SetTextSafe(txtUsername, username);
+                        SetTextSafe(txtPassword, "");
+                        SetTextSafe(txtName, nickname);
+
+                        // 保存账号信息
+                        SaveAccountConfig(username, nickname);
+                    }
+                    else
+                    {
+                        string msg = ExtractString(result, "msg");
+                        Log("注册失败: " + msg);
+                        SetAccountStatus("注册失败");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Log("注册请求失败: " + ex.Message);
+                    SetAccountStatus("连接失败");
+                }
+                finally
+                {
+                    SetButtonSafe(btnRegister, true, "注册");
+                }
+            });
+            t.IsBackground = true;
+            t.Start();
+        }
+
+        /// <summary>
+        /// 简易 HTTP POST（.NET Framework 4.x 兼容）
+        /// </summary>
+        private static string HttpPost(string url, string jsonBody)
+        {
+            byte[] body = Encoding.UTF8.GetBytes(jsonBody);
+            HttpWebRequest req = (HttpWebRequest)WebRequest.Create(url);
+            req.Method = "POST";
+            req.ContentType = "application/json; charset=utf-8";
+            req.ContentLength = body.Length;
+            req.Timeout = 10000; // 10秒超时
+            using (Stream stream = req.GetRequestStream())
+            {
+                stream.Write(body, 0, body.Length);
+            }
+            using (HttpWebResponse resp = (HttpWebResponse)req.GetResponse())
+            using (Stream respStream = resp.GetResponseStream())
+            using (StreamReader reader = new StreamReader(respStream, Encoding.UTF8))
+            {
+                return reader.ReadToEnd();
+            }
+        }
+
+        /// <summary>
+        /// 简易 JSON 值检查（避免引入 JSON 库）
+        /// </summary>
+        private static bool ContainsValue(string json, string key, string value)
+        {
+            return json.IndexOf(key + ":" + value) >= 0 || json.IndexOf(key + " : " + value) >= 0;
+        }
+
+        /// <summary>
+        /// 简易 JSON 字符串提取
+        /// </summary>
+        private static string ExtractString(string json, string key)
+        {
+            string search = "\"" + key + "\":\"";
+            int idx = json.IndexOf(search, StringComparison.Ordinal);
+            if (idx < 0)
+            {
+                search = "\"" + key + "\" : \"";
+                idx = json.IndexOf(search, StringComparison.Ordinal);
+            }
+            if (idx < 0) return "";
+            idx += search.Length;
+            int end = json.IndexOf('"', idx);
+            if (end < 0) return "";
+            // 处理转义字符
+            string raw = json.Substring(idx, end - idx);
+            return raw.Replace("\\n", "\n").Replace("\\r", "\r").Replace("\\t", "\t").Replace("\\\"", "\"").Replace("\\\\", "\\");
+        }
+
+        private void SetAccountStatus(string text)
+        {
+            if (lblAccountStatus.InvokeRequired)
+            {
+                try { lblAccountStatus.BeginInvoke(new Action<string>(SetAccountStatus), text); } catch { }
+            }
+            else
+            {
+                lblAccountStatus.Text = text;
+            }
+        }
+
+        private void SetTextSafe(TextBox tb, string text)
+        {
+            if (tb.InvokeRequired)
+            {
+                try { tb.BeginInvoke(new Action<TextBox, string>(SetTextSafe), tb, text); } catch { }
+            }
+            else
+            {
+                tb.Text = text;
+            }
+        }
+
+        private void SetButtonSafe(Button btn, bool enabled, string text)
+        {
+            if (btn.InvokeRequired)
+            {
+                try { btn.BeginInvoke(new Action<Button, bool, string>(SetButtonSafe), btn, enabled, text); } catch { }
+            }
+            else
+            {
+                btn.Enabled = enabled;
+                btn.Text = text;
+            }
+        }
+
         // ============ 启动 ============
 
         private void StartClicked()
@@ -109,7 +517,26 @@ namespace KartRider
                 return;
             btnStart.Enabled = false;
 
-            SaveConfig(txtIp.Text.Trim(), txtPort.Text.Trim(), txtName.Text.Trim());
+            // 根据当前 Tab 决定昵称来源
+            string nickname;
+            if (tabMode.SelectedTab == tabAccount)
+            {
+                // 账号模式：使用登录后填入的昵称
+                nickname = txtName.Text.Trim();
+                if (string.IsNullOrEmpty(nickname))
+                {
+                    Log("错误：请先登录账号，或切换到「直接登录」模式");
+                    SetButtonEnabled();
+                    return;
+                }
+            }
+            else
+            {
+                // 直接登录模式
+                nickname = txtName.Text.Trim();
+            }
+
+            SaveConfig(txtIp.Text.Trim(), txtPort.Text.Trim(), nickname);
 
             Thread t = new Thread(LaunchGame);
             t.IsBackground = true;
@@ -123,8 +550,17 @@ namespace KartRider
             {
                 string serverIP = txtIp.Text.Trim();
                 string serverPortStr = txtPort.Text.Trim();
-                string nickname = txtName.Text.Trim();
+                string nickname;
                 ushort serverPort;
+
+                if (tabMode.SelectedTab == tabAccount)
+                {
+                    nickname = txtName.Text.Trim();
+                }
+                else
+                {
+                    nickname = txtName.Text.Trim();
+                }
 
                 if (serverIP.Length == 0 || serverPortStr.Length == 0 || nickname.Length == 0)
                 {
@@ -354,6 +790,26 @@ namespace KartRider
             }
         }
 
+        /// <summary>
+        /// 保存账号信息到配置（账号名+绑定昵称，不保存密码）
+        /// </summary>
+        private void SaveAccountConfig(string username, string nickname)
+        {
+            try
+            {
+                string path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "MiniLauncher.ini");
+                string content = "[Launcher]\r\n" +
+                    "ServerIP=" + txtIp.Text.Trim() + "\r\n" +
+                    "ServerPort=" + txtPort.Text.Trim() + "\r\n" +
+                    "Nickname=" + nickname + "\r\n" +
+                    "Username=" + username + "\r\n";
+                File.WriteAllText(path, content, Encoding.UTF8);
+            }
+            catch
+            {
+            }
+        }
+
         private void LoadConfig()
         {
             try
@@ -375,6 +831,8 @@ namespace KartRider
                         txtPort.Text = value;
                     else if (key == "Nickname")
                         txtName.Text = value;
+                    else if (key == "Username")
+                        txtUsername.Text = value;
                 }
             }
             catch
