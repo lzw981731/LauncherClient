@@ -1024,7 +1024,7 @@ namespace KartRider
                     if (key == "ServerIP") _serverIP = value;
                     else if (key == "ServerPort") { ushort p; if (ushort.TryParse(value, out p)) _serverPort = p; }
                     else if (key == "Username") txtUser.Text = value;
-                    else if (key == "Nickname") { _boundNickname = value; }
+                    // 注意：不加载 Nickname 和 Token，每次启动必须重新登录
                 }
             }
             catch { }
