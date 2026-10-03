@@ -1,10 +1,9 @@
-// MiniLauncher —— 极简 KartRider 登录器（含账号注册/登录）
-// 三个参数：服务器IP / 服务器端口 / 角色名称
+// MiniLauncher —— KartRider 账号登录器
+// 账号注册/登录（HTTP API :39314），登录后自动使用绑定昵称启动游戏
 // 传给 KartRider.exe 的内容与原版 Launcher_V2 完全一致：
 //   1. 命令行: KartRider.exe TGC -region:3 -passport:<Base64 JSON>
 //   2. PIN 文件: 登录服务器 LoginServers 改写 + 移除 NgsOn
 //   3. 启动后: TCP 检测到连接即恢复原始 PIN 文件
-// 新增：账号注册/登录（HTTP API :39314），登录后自动填入绑定昵称
 // 编译: 双击 编译.bat（Windows 自带 .NET Framework csc.exe，无需 Visual Studio）
 
 using System;
@@ -32,35 +31,41 @@ namespace KartRider
 
     public class MiniLauncherForm : Form
     {
+        // 服务器设置
         private TextBox txtIp;
         private TextBox txtPort;
-        private TextBox txtName;
-        private TextBox txtLog;
-        private Button btnStart;
 
-        // 账号系统控件
-        private TabControl tabMode;
-        private TabPage tabDirect;
-        private TabPage tabAccount;
-        private TextBox txtUsername;
-        private TextBox txtPassword;
+        // 登录区
+        private TextBox txtUser;
+        private TextBox txtPass;
+        private Button btnLogin;
+        private Button btnStart;
+        private LinkLabel linkRegister;
+
+        // 注册区（覆盖在登录区上方）
+        private Panel panelRegister;
         private TextBox txtRegUser;
         private TextBox txtRegPass;
         private TextBox txtRegNick;
-        private Button btnLogin;
-        private Button btnRegister;
-        private Label lblAccountStatus;
+        private Button btnRegConfirm;
+        private Button btnRegCancel;
+        private Label lblRegHint;
 
-        // 账号 API 基地址（从 IP+端口 推导）
+        // 日志
+        private TextBox txtLog;
+
+        // 登录后绑定的昵称
+        private string _boundNickname = "";
+        private string _loggedInUser = "";
+
+        // 账号 API 基地址
         private string AccountApiBase
         {
             get
             {
                 string ip = txtIp.Text.Trim();
                 string portStr = txtPort.Text.Trim();
-                if (string.IsNullOrEmpty(ip) || string.IsNullOrEmpty(portStr))
-                    return "";
-                // 账号 API 端口 = 游戏端口 + 3
+                if (string.IsNullOrEmpty(ip) || string.IsNullOrEmpty(portStr)) return "";
                 ushort port;
                 if (ushort.TryParse(portStr, out port))
                     return string.Format("http://{0}:{1}", ip, port + 3);
@@ -70,199 +75,197 @@ namespace KartRider
 
         public MiniLauncherForm()
         {
-            Text = "KartRider 登录器 Mini";
+            Text = "KartRider 登录器";
             Font = new Font("Microsoft YaHei", 9f);
-            ClientSize = new Size(460, 520);
+            ClientSize = new Size(400, 480);
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
 
-            int y = 16;
+            int y = 14;
 
-            txtIp = NewTextBox();
-            y = AddRow("服务器IP:", txtIp, y, 200);
-
-            txtPort = NewTextBox();
-            y = AddRow("服务器端口:", txtPort, y, 100);
-
-            // 模式切换 TabControl
-            tabMode = new TabControl();
-            tabMode.Location = new Point(16, y);
-            tabMode.Size = new Size(ClientSize.Width - 32, 200);
-            tabMode.Font = Font;
-
-            // ---- 直接登录 Tab ----
-            tabDirect = new TabPage("直接登录");
-            tabDirect.Font = Font;
-            {
-                int ty = 12;
-                Label lb = new Label();
-                lb.Text = "输入角色名称直接进入游戏（无需账号）";
-                lb.AutoSize = true;
-                lb.Location = new Point(12, ty);
-                lb.ForeColor = Color.Gray;
-                tabDirect.Controls.Add(lb);
-                ty += 28;
-
-                Label lbName = new Label();
-                lbName.Text = "角色名称:";
-                lbName.AutoSize = true;
-                lbName.Location = new Point(12, ty + 3);
-                tabDirect.Controls.Add(lbName);
-
-                txtName = NewTextBox();
-                txtName.Location = new Point(100, ty);
-                txtName.Size = new Size(200, 24);
-                tabDirect.Controls.Add(txtName);
-            }
-            tabMode.TabPages.Add(tabDirect);
-
-            // ---- 账号登录 Tab ----
-            tabAccount = new TabPage("账号登录");
-            tabAccount.Font = Font;
-            {
-                int ty = 10;
-
-                // 登录区
-                Label lbLogin = new Label();
-                lbLogin.Text = "── 登录 ──";
-                lbLogin.AutoSize = true;
-                lbLogin.Location = new Point(12, ty);
-                lbLogin.Font = new Font(Font.FontFamily, 8f, FontStyle.Bold);
-                tabAccount.Controls.Add(lbLogin);
-                ty += 22;
-
-                Label lbUser = new Label();
-                lbUser.Text = "账号:";
-                lbUser.AutoSize = true;
-                lbUser.Location = new Point(12, ty + 3);
-                tabAccount.Controls.Add(lbUser);
-
-                txtUsername = NewTextBox();
-                txtUsername.Location = new Point(70, ty);
-                txtUsername.Size = new Size(150, 24);
-                tabAccount.Controls.Add(txtUsername);
-                ty += 30;
-
-                Label lbPass = new Label();
-                lbPass.Text = "密码:";
-                lbPass.AutoSize = true;
-                lbPass.Location = new Point(12, ty + 3);
-                tabAccount.Controls.Add(lbPass);
-
-                txtPassword = NewTextBox();
-                txtPassword.Location = new Point(70, ty);
-                txtPassword.Size = new Size(150, 24);
-                txtPassword.UseSystemPasswordChar = true;
-                tabAccount.Controls.Add(txtPassword);
-
-                btnLogin = new Button();
-                btnLogin.Text = "登录";
-                btnLogin.Size = new Size(60, 26);
-                btnLogin.Location = new Point(230, ty - 1);
-                btnLogin.Font = new Font(Font.FontFamily, 8f);
-                btnLogin.Click += delegate { DoLogin(); };
-                tabAccount.Controls.Add(btnLogin);
-                ty += 36;
-
-                // 注册区
-                Label lbReg = new Label();
-                lbReg.Text = "── 注册 ──";
-                lbReg.AutoSize = true;
-                lbReg.Location = new Point(12, ty);
-                lbReg.Font = new Font(Font.FontFamily, 8f, FontStyle.Bold);
-                tabAccount.Controls.Add(lbReg);
-                ty += 22;
-
-                Label lbRU = new Label();
-                lbRU.Text = "账号:";
-                lbRU.AutoSize = true;
-                lbRU.Location = new Point(12, ty + 3);
-                tabAccount.Controls.Add(lbRU);
-
-                txtRegUser = NewTextBox();
-                txtRegUser.Location = new Point(70, ty);
-                txtRegUser.Size = new Size(150, 24);
-                tabAccount.Controls.Add(txtRegUser);
-                ty += 30;
-
-                Label lbRP = new Label();
-                lbRP.Text = "密码:";
-                lbRP.AutoSize = true;
-                lbRP.Location = new Point(12, ty + 3);
-                tabAccount.Controls.Add(lbRP);
-
-                txtRegPass = NewTextBox();
-                txtRegPass.Location = new Point(70, ty);
-                txtRegPass.Size = new Size(150, 24);
-                txtRegPass.UseSystemPasswordChar = true;
-                tabAccount.Controls.Add(txtRegPass);
-                ty += 30;
-
-                Label lbRN = new Label();
-                lbRN.Text = "昵称:";
-                lbRN.AutoSize = true;
-                lbRN.Location = new Point(12, ty + 3);
-                tabAccount.Controls.Add(lbRN);
-
-                txtRegNick = NewTextBox();
-                txtRegNick.Location = new Point(70, ty);
-                txtRegNick.Size = new Size(150, 24);
-                tabAccount.Controls.Add(txtRegNick);
-
-                btnRegister = new Button();
-                btnRegister.Text = "注册";
-                btnRegister.Size = new Size(60, 26);
-                btnRegister.Location = new Point(230, ty - 1);
-                btnRegister.Font = new Font(Font.FontFamily, 8f);
-                btnRegister.Click += delegate { DoRegister(); };
-                tabAccount.Controls.Add(btnRegister);
-            }
-            tabMode.TabPages.Add(tabAccount);
-
-            Controls.Add(tabMode);
-            y += tabMode.Height + 8;
-
-            // 账号状态栏
-            lblAccountStatus = new Label();
-            lblAccountStatus.Text = "";
-            lblAccountStatus.AutoSize = true;
-            lblAccountStatus.Location = new Point(16, y);
-            lblAccountStatus.Font = new Font(Font.FontFamily, 8f);
-            lblAccountStatus.ForeColor = Color.DarkGreen;
-            Controls.Add(lblAccountStatus);
+            // ---- 服务器设置 ----
+            Label lbServer = new Label();
+            lbServer.Text = "服务器设置";
+            lbServer.Font = new Font(Font.FontFamily, 8f, FontStyle.Bold);
+            lbServer.ForeColor = Color.Gray;
+            lbServer.Location = new Point(16, y);
+            lbServer.AutoSize = true;
+            Controls.Add(lbServer);
             y += 20;
 
+            txtIp = NewTextBox();
+            y = AddRow("IP:", txtIp, y, 170);
+
+            txtPort = NewTextBox();
+            txtPort.Text = "39311";
+            y = AddRow("端口:", txtPort, y, 80);
+            y += 6;
+
+            // ---- 分隔线 ----
+            Panel sep1 = new Panel();
+            sep1.Height = 1;
+            sep1.BackColor = Color.LightGray;
+            sep1.Location = new Point(16, y);
+            sep1.Size = new Size(ClientSize.Width - 32, 1);
+            Controls.Add(sep1);
+            y += 10;
+
+            // ---- 账号登录 ----
+            Label lbAccount = new Label();
+            lbAccount.Text = "账号登录";
+            lbAccount.Font = new Font(Font.FontFamily, 9.5f, FontStyle.Bold);
+            lbAccount.Location = new Point(16, y);
+            lbAccount.AutoSize = true;
+            Controls.Add(lbAccount);
+            y += 28;
+
+            txtUser = NewTextBox();
+            y = AddRow("账号:", txtUser, y, 200);
+
+            txtPass = NewTextBox();
+            txtPass.UseSystemPasswordChar = true;
+            y = AddRow("密码:", txtPass, y, 200);
+            y += 4;
+
+            // 登录按钮
+            btnLogin = new Button();
+            btnLogin.Text = "登 录";
+            btnLogin.Size = new Size(200, 32);
+            btnLogin.Location = new Point(100, y);
+            btnLogin.Font = new Font(Font.FontFamily, 10f);
+            btnLogin.Click += delegate { DoLogin(); };
+            Controls.Add(btnLogin);
+            y += 40;
+
+            // 注册链接（右下角）
+            linkRegister = new LinkLabel();
+            linkRegister.Text = "注册新账号";
+            linkRegister.Font = new Font(Font.FontFamily, 9f);
+            linkRegister.Location = new Point(ClientSize.Width - 100, y - 30);
+            linkRegister.Size = new Size(90, 24);
+            linkRegister.LinkColor = Color.SteelBlue;
+            linkRegister.LinkClicked += delegate { ShowRegisterPanel(); };
+            Controls.Add(linkRegister);
+            y += 8;
+
+            // ---- 分隔线 ----
+            Panel sep2 = new Panel();
+            sep2.Height = 1;
+            sep2.BackColor = Color.LightGray;
+            sep2.Location = new Point(16, y);
+            sep2.Size = new Size(ClientSize.Width - 32, 1);
+            Controls.Add(sep2);
+            y += 10;
+
+            // ---- 启动按钮 ----
             btnStart = new Button();
-            btnStart.Text = "启动游戏";
-            btnStart.Size = new Size(130, 34);
-            btnStart.Location = new Point(165, y + 2);
-            btnStart.Font = Font;
+            btnStart.Text = "▶ 启动游戏";
+            btnStart.Size = new Size(200, 38);
+            btnStart.Location = new Point(100, y);
+            btnStart.Font = new Font(Font.FontFamily, 11f, FontStyle.Bold);
+            btnStart.BackColor = Color.FromArgb(76, 175, 80);
+            btnStart.ForeColor = Color.White;
+            btnStart.FlatStyle = FlatStyle.Flat;
+            btnStart.FlatAppearance.BorderSize = 0;
             btnStart.Click += delegate { StartClicked(); };
             Controls.Add(btnStart);
+            y += 50;
 
-            y += 46;
-
+            // ---- 日志 ----
             txtLog = new TextBox();
             txtLog.Multiline = true;
             txtLog.ReadOnly = true;
             txtLog.ScrollBars = ScrollBars.Vertical;
             txtLog.Location = new Point(16, y);
-            txtLog.Size = new Size(ClientSize.Width - 32, ClientSize.Height - y - 16);
-            txtLog.Font = new Font("Consolas", 9f);
+            txtLog.Size = new Size(ClientSize.Width - 32, ClientSize.Height - y - 14);
+            txtLog.Font = new Font("Consolas", 8.5f);
             Controls.Add(txtLog);
 
-            // Tab 切换时同步 txtName
-            tabMode.SelectedIndexChanged += delegate
-            {
-                if (tabMode.SelectedTab == tabDirect)
-                {
-                    lblAccountStatus.Text = "";
-                }
-            };
+            // ---- 注册面板（初始隐藏，覆盖在登录区上方）----
+            panelRegister = new Panel();
+            panelRegister.Location = new Point(0, 0);
+            panelRegister.Size = new Size(ClientSize.Width, ClientSize.Height);
+            panelRegister.BackColor = Color.White;
+            panelRegister.Visible = false;
+            Controls.Add(panelRegister);
+            // 确保在最上层
+            panelRegister.BringToFront();
+
+            int ry = 60;
+
+            Label lbRegTitle = new Label();
+            lbRegTitle.Text = "注册新账号";
+            lbRegTitle.Font = new Font(Font.FontFamily, 12f, FontStyle.Bold);
+            lbRegTitle.Location = new Point(80, ry);
+            lbRegTitle.AutoSize = true;
+            panelRegister.Controls.Add(lbRegTitle);
+            ry += 36;
+
+            Label lbRU = new Label();
+            lbRU.Text = "账号:";
+            lbRU.AutoSize = true;
+            lbRU.Location = new Point(40, ry + 3);
+            panelRegister.Controls.Add(lbRU);
+
+            txtRegUser = NewTextBox();
+            txtRegUser.Location = new Point(100, ry);
+            txtRegUser.Size = new Size(200, 24);
+            panelRegister.Controls.Add(txtRegUser);
+            ry += 32;
+
+            Label lbRP = new Label();
+            lbRP.Text = "密码:";
+            lbRP.AutoSize = true;
+            lbRP.Location = new Point(40, ry + 3);
+            panelRegister.Controls.Add(lbRP);
+
+            txtRegPass = NewTextBox();
+            txtRegPass.Location = new Point(100, ry);
+            txtRegPass.Size = new Size(200, 24);
+            txtRegPass.UseSystemPasswordChar = true;
+            panelRegister.Controls.Add(txtRegPass);
+            ry += 32;
+
+            Label lbRN = new Label();
+            lbRN.Text = "昵称:";
+            lbRN.AutoSize = true;
+            lbRN.Location = new Point(40, ry + 3);
+            panelRegister.Controls.Add(lbRN);
+
+            txtRegNick = NewTextBox();
+            txtRegNick.Location = new Point(100, ry);
+            txtRegNick.Size = new Size(200, 24);
+            panelRegister.Controls.Add(txtRegNick);
+            ry += 30;
+
+            lblRegHint = new Label();
+            lblRegHint.Text = "昵称 = 游戏内角色名，注册后不可修改";
+            lblRegHint.Font = new Font(Font.FontFamily, 8f);
+            lblRegHint.ForeColor = Color.Gray;
+            lblRegHint.AutoSize = true;
+            lblRegHint.Location = new Point(40, ry);
+            panelRegister.Controls.Add(lblRegHint);
+            ry += 30;
+
+            btnRegConfirm = new Button();
+            btnRegConfirm.Text = "确认注册";
+            btnRegConfirm.Size = new Size(120, 30);
+            btnRegConfirm.Location = new Point(60, ry);
+            btnRegConfirm.Font = new Font(Font.FontFamily, 9f);
+            btnRegConfirm.Click += delegate { DoRegister(); };
+            panelRegister.Controls.Add(btnRegConfirm);
+
+            btnRegCancel = new Button();
+            btnRegCancel.Text = "取消";
+            btnRegCancel.Size = new Size(80, 30);
+            btnRegCancel.Location = new Point(200, ry);
+            btnRegCancel.Font = new Font(Font.FontFamily, 9f);
+            btnRegCancel.Click += delegate { HideRegisterPanel(); };
+            panelRegister.Controls.Add(btnRegCancel);
 
             LoadConfig();
-            Log("就绪。选择「直接登录」或「账号登录」模式。");
+            Log("就绪。请登录账号后启动游戏。");
         }
 
         private TextBox NewTextBox()
@@ -277,13 +280,31 @@ namespace KartRider
             Label lb = new Label();
             lb.Text = label;
             lb.AutoSize = true;
-            lb.Location = new Point(16, y + 3);
+            lb.Location = new Point(40, y + 3);
             Controls.Add(lb);
 
-            input.Location = new Point(118, y);
+            input.Location = new Point(100, y);
             input.Size = new Size(width, 24);
             Controls.Add(input);
-            return y + 34;
+            return y + 30;
+        }
+
+        // ============ 注册面板显隐 ============
+
+        private void ShowRegisterPanel()
+        {
+            txtRegUser.Text = "";
+            txtRegPass.Text = "";
+            txtRegNick.Text = "";
+            lblRegHint.Text = "昵称 = 游戏内角色名，注册后不可修改";
+            lblRegHint.ForeColor = Color.Gray;
+            panelRegister.Visible = true;
+            txtRegUser.Focus();
+        }
+
+        private void HideRegisterPanel()
+        {
+            panelRegister.Visible = false;
         }
 
         // ============ 账号 API ============
@@ -297,8 +318,8 @@ namespace KartRider
                 return;
             }
 
-            string username = txtUsername.Text.Trim();
-            string password = txtPassword.Text.Trim();
+            string username = txtUser.Text.Trim();
+            string password = txtPass.Text.Trim();
             if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password))
             {
                 Log("错误：请输入账号和密码");
@@ -318,37 +339,29 @@ namespace KartRider
                     string result = HttpPost(apiBase + "/login", json);
                     Log("登录响应: " + result);
 
-                    // 简易 JSON 解析（不依赖 Newtonsoft/System.Text.Json）
                     if (ContainsValue(result, "\"ok\"", "true"))
                     {
                         string nickname = ExtractString(result, "nickname");
-                        string token = ExtractString(result, "token");
-                        Log("登录成功！绑定昵称: " + nickname);
-
-                        SetAccountStatus("已登录: " + username + " → " + nickname);
-
-                        // 自动填入昵称到直接登录框
-                        SetTextSafe(txtName, nickname);
-                        SetTextSafe(txtUsername, username);
-
-                        // 保存账号信息到配置
-                        SaveAccountConfig(username, nickname);
+                        _boundNickname = nickname;
+                        _loggedInUser = username;
+                        Log("登录成功！绑定角色: " + nickname);
+                        SetTextSafe(lblRegHint, "✓ 已登录: " + username + " → " + nickname);
+                        SetColorSafe(lblRegHint, Color.DarkGreen);
+                        SaveConfig(txtIp.Text.Trim(), txtPort.Text.Trim(), username, nickname);
                     }
                     else
                     {
                         string msg = ExtractString(result, "msg");
                         Log("登录失败: " + msg);
-                        SetAccountStatus("登录失败");
                     }
                 }
                 catch (Exception ex)
                 {
                     Log("登录请求失败: " + ex.Message);
-                    SetAccountStatus("连接失败");
                 }
                 finally
                 {
-                    SetButtonSafe(btnLogin, true, "登录");
+                    SetButtonSafe(btnLogin, true, "登 录");
                 }
             });
             t.IsBackground = true;
@@ -369,12 +382,25 @@ namespace KartRider
             string nickname = txtRegNick.Text.Trim();
             if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password) || string.IsNullOrEmpty(nickname))
             {
-                Log("错误：请填写注册账号、密码和昵称");
+                lblRegHint.Text = "请填写所有字段";
+                lblRegHint.ForeColor = Color.Red;
+                return;
+            }
+            if (password.Length < 4)
+            {
+                lblRegHint.Text = "密码至少4位";
+                lblRegHint.ForeColor = Color.Red;
+                return;
+            }
+            if (nickname.Length > 16)
+            {
+                lblRegHint.Text = "昵称最长16字符";
+                lblRegHint.ForeColor = Color.Red;
                 return;
             }
 
-            btnRegister.Enabled = false;
-            btnRegister.Text = "注册中...";
+            btnRegConfirm.Enabled = false;
+            btnRegConfirm.Text = "注册中...";
 
             string json = string.Format("{{\"username\":\"{0}\",\"password\":\"{1}\",\"nickname\":\"{2}\"}}",
                 JsonEscape(username), JsonEscape(password), JsonEscape(nickname));
@@ -388,32 +414,36 @@ namespace KartRider
 
                     if (ContainsValue(result, "\"ok\"", "true"))
                     {
-                        Log("注册成功！账号: " + username + " 昵称: " + nickname);
-                        SetAccountStatus("注册成功，请登录");
+                        Log("注册成功！账号: " + username + " 角色: " + nickname);
+                        _boundNickname = nickname;
+                        _loggedInUser = username;
+                        SetTextSafe(lblRegHint, "✓ 注册成功！角色: " + nickname);
+                        SetColorSafe(lblRegHint, Color.DarkGreen);
+                        SetTextSafe(txtUser, username);
+                        SetTextSafe(txtPass, "");
+                        SaveConfig(txtIp.Text.Trim(), txtPort.Text.Trim(), username, nickname);
 
-                        // 自动填入登录框
-                        SetTextSafe(txtUsername, username);
-                        SetTextSafe(txtPassword, "");
-                        SetTextSafe(txtName, nickname);
-
-                        // 保存账号信息
-                        SaveAccountConfig(username, nickname);
+                        // 注册成功后自动关闭注册面板
+                        Thread.Sleep(800);
+                        HideRegisterPanelSafe();
                     }
                     else
                     {
                         string msg = ExtractString(result, "msg");
                         Log("注册失败: " + msg);
-                        SetAccountStatus("注册失败");
+                        SetTextSafe(lblRegHint, "注册失败: " + msg);
+                        SetColorSafe(lblRegHint, Color.Red);
                     }
                 }
                 catch (Exception ex)
                 {
                     Log("注册请求失败: " + ex.Message);
-                    SetAccountStatus("连接失败");
+                    SetTextSafe(lblRegHint, "连接失败: " + ex.Message);
+                    SetColorSafe(lblRegHint, Color.Red);
                 }
                 finally
                 {
-                    SetButtonSafe(btnRegister, true, "注册");
+                    SetButtonSafe(btnRegConfirm, true, "确认注册");
                 }
             });
             t.IsBackground = true;
@@ -430,7 +460,7 @@ namespace KartRider
             req.Method = "POST";
             req.ContentType = "application/json; charset=utf-8";
             req.ContentLength = body.Length;
-            req.Timeout = 10000; // 10秒超时
+            req.Timeout = 10000;
             using (Stream stream = req.GetRequestStream())
             {
                 stream.Write(body, 0, body.Length);
@@ -443,17 +473,11 @@ namespace KartRider
             }
         }
 
-        /// <summary>
-        /// 简易 JSON 值检查（避免引入 JSON 库）
-        /// </summary>
         private static bool ContainsValue(string json, string key, string value)
         {
             return json.IndexOf(key + ":" + value) >= 0 || json.IndexOf(key + " : " + value) >= 0;
         }
 
-        /// <summary>
-        /// 简易 JSON 字符串提取
-        /// </summary>
         private static string ExtractString(string json, string key)
         {
             string search = "\"" + key + "\":\"";
@@ -467,32 +491,31 @@ namespace KartRider
             idx += search.Length;
             int end = json.IndexOf('"', idx);
             if (end < 0) return "";
-            // 处理转义字符
             string raw = json.Substring(idx, end - idx);
             return raw.Replace("\\n", "\n").Replace("\\r", "\r").Replace("\\t", "\t").Replace("\\\"", "\"").Replace("\\\\", "\\");
         }
 
-        private void SetAccountStatus(string text)
+        private void SetTextSafe(Control ctrl, string text)
         {
-            if (lblAccountStatus.InvokeRequired)
+            if (ctrl.InvokeRequired)
             {
-                try { lblAccountStatus.BeginInvoke(new Action<string>(SetAccountStatus), text); } catch { }
+                try { ctrl.BeginInvoke(new Action<Control, string>(SetTextSafe), ctrl, text); } catch { }
             }
             else
             {
-                lblAccountStatus.Text = text;
+                ctrl.Text = text;
             }
         }
 
-        private void SetTextSafe(TextBox tb, string text)
+        private void SetColorSafe(Control ctrl, Color color)
         {
-            if (tb.InvokeRequired)
+            if (ctrl.InvokeRequired)
             {
-                try { tb.BeginInvoke(new Action<TextBox, string>(SetTextSafe), tb, text); } catch { }
+                try { ctrl.BeginInvoke(new Action<Control, Color>(SetColorSafe), ctrl, color); } catch { }
             }
             else
             {
-                tb.Text = text;
+                ctrl.ForeColor = color;
             }
         }
 
@@ -509,62 +532,53 @@ namespace KartRider
             }
         }
 
-        // ============ 启动 ============
-
-        private void StartClicked()
+        private void HideRegisterPanelSafe()
         {
-            if (!btnStart.Enabled)
-                return;
-            btnStart.Enabled = false;
-
-            // 根据当前 Tab 决定昵称来源
-            string nickname;
-            if (tabMode.SelectedTab == tabAccount)
+            if (panelRegister.InvokeRequired)
             {
-                // 账号模式：使用登录后填入的昵称
-                nickname = txtName.Text.Trim();
-                if (string.IsNullOrEmpty(nickname))
-                {
-                    Log("错误：请先登录账号，或切换到「直接登录」模式");
-                    SetButtonEnabled();
-                    return;
-                }
+                try { panelRegister.BeginInvoke(new Action(HideRegisterPanelSafe)); } catch { }
             }
             else
             {
-                // 直接登录模式
-                nickname = txtName.Text.Trim();
+                panelRegister.Visible = false;
+            }
+        }
+
+        // ============ 启动游戏 ============
+
+        private void StartClicked()
+        {
+            if (!btnStart.Enabled) return;
+
+            // 必须先登录
+            if (string.IsNullOrEmpty(_boundNickname))
+            {
+                Log("请先登录账号，或注册新账号");
+                return;
             }
 
-            SaveConfig(txtIp.Text.Trim(), txtPort.Text.Trim(), nickname);
+            btnStart.Enabled = false;
 
-            Thread t = new Thread(LaunchGame);
+            SaveConfig(txtIp.Text.Trim(), txtPort.Text.Trim(), _loggedInUser, _boundNickname);
+
+            string nickname = _boundNickname;
+            Thread t = new Thread(delegate() { LaunchGame(nickname); });
             t.IsBackground = true;
             t.Name = "LaunchThread";
             t.Start();
         }
 
-        private void LaunchGame()
+        private void LaunchGame(string nickname)
         {
             try
             {
                 string serverIP = txtIp.Text.Trim();
                 string serverPortStr = txtPort.Text.Trim();
-                string nickname;
                 ushort serverPort;
 
-                if (tabMode.SelectedTab == tabAccount)
+                if (string.IsNullOrEmpty(serverIP) || string.IsNullOrEmpty(serverPortStr))
                 {
-                    nickname = txtName.Text.Trim();
-                }
-                else
-                {
-                    nickname = txtName.Text.Trim();
-                }
-
-                if (serverIP.Length == 0 || serverPortStr.Length == 0 || nickname.Length == 0)
-                {
-                    Log("错误：请填写 服务器IP / 服务器端口 / 角色名称");
+                    Log("错误：请填写服务器IP和端口");
                     return;
                 }
                 if (!ushort.TryParse(serverPortStr, out serverPort))
@@ -584,11 +598,9 @@ namespace KartRider
                 string pinFile = Path.Combine(root, "KartRider.pin");
                 string pinFileBak = Path.Combine(root, "KartRider-bak.pin");
 
-                // 上次启动残留的备份：先还原，保证 PIN 从原版开始改
                 if (File.Exists(pinFileBak))
                 {
-                    if (File.Exists(pinFile))
-                        File.Delete(pinFile);
+                    if (File.Exists(pinFile)) File.Delete(pinFile);
                     File.Move(pinFileBak, pinFile);
                     Log("已还原上次残留的 PIN 备份");
                 }
@@ -599,7 +611,6 @@ namespace KartRider
                 File.Copy(pinFile, pinFileBak, true);
                 Log("已备份 PIN -> KartRider-bak.pin");
 
-                // 改写登录服务器（与原版一致：IPv6 时游戏连 127.0.0.1）
                 string ip = IsIPv6(serverIP) ? "127.0.0.1" : serverIP;
                 if (val.AuthMethods != null)
                 {
@@ -611,13 +622,11 @@ namespace KartRider
                 }
                 Log(string.Format("已写入登录服务器: {0}:{1}", ip, serverPort));
 
-                // 移除 NgsOn（与原版默认设置 NgsOn=false 一致）
                 RemoveNgsOn(val);
 
                 File.WriteAllBytes(pinFile, val.GetEncryptedData());
                 Log("PIN 文件已写回");
 
-                // 构造 passport（字段顺序与原版 Helper.cs 一致）
                 string json = string.Format(
                     "{{\"Nickname\":\"{0}\",\"ClientVersion\":{1},\"CompileTime\":\"{2}\"}}",
                     JsonEscape(nickname), clientVersion, CompileTime.Time);
@@ -635,8 +644,7 @@ namespace KartRider
                 Log(string.Format("KartRider.exe 已启动, PID={0}", pid));
                 proc.Dispose();
 
-                // 后台检测 TCP 连接，连上后恢复原始 PIN（与原版一致）
-                Log("等待游戏连接服务器，连接后自动恢复原始 PIN ...");
+                Log("等待游戏连接服务器...");
                 bool restored = false;
                 for (int i = 0; i < 30; i++)
                 {
@@ -652,7 +660,7 @@ namespace KartRider
                     }
                 }
                 if (!restored)
-                    Log("30 秒内未检测到连接（游戏可能仍在启动；下次启动会自动还原 PIN）");
+                    Log("30 秒内未检测到连接（下次启动会自动还原 PIN）");
             }
             catch (Exception ex)
             {
@@ -660,18 +668,7 @@ namespace KartRider
             }
             finally
             {
-                SetButtonEnabled();
-            }
-        }
-
-        private void SetButtonEnabled()
-        {
-            try
-            {
-                btnStart.BeginInvoke(new Action(delegate { btnStart.Enabled = true; }));
-            }
-            catch
-            {
+                SetButtonSafe(btnStart, true, "▶ 启动游戏");
             }
         }
 
@@ -679,9 +676,7 @@ namespace KartRider
 
         private void RemoveNgsOn(PINFile val)
         {
-            if (val.BmlObjects == null)
-                return;
-
+            if (val.BmlObjects == null) return;
             foreach (BmlObject bml in val.BmlObjects)
             {
                 if (bml.Name == "extra" && bml.SubObjects != null)
@@ -703,20 +698,15 @@ namespace KartRider
         {
             try
             {
-                if (string.IsNullOrEmpty(pinFileBak) || !File.Exists(pinFileBak))
-                    return false;
-                if (File.Exists(pinFile))
-                    File.Delete(pinFile);
+                if (string.IsNullOrEmpty(pinFileBak) || !File.Exists(pinFileBak)) return false;
+                if (File.Exists(pinFile)) File.Delete(pinFile);
                 File.Move(pinFileBak, pinFile);
                 return true;
             }
-            catch
-            {
-                return false;
-            }
+            catch { return false; }
         }
 
-        // ============ TCP 检测（对齐原版精确匹配逻辑） ============
+        // ============ TCP 检测 ============
 
         private bool CheckTcpConnection(int processId, string serverIP, int serverPort)
         {
@@ -728,24 +718,20 @@ namespace KartRider
                     UseShellExecute = false,
                     CreateNoWindow = true
                 };
-                using (Process netstatProcess = Process.Start(psi))
+                using (Process p = Process.Start(psi))
                 {
-                    string output = netstatProcess.StandardOutput.ReadToEnd();
-                    netstatProcess.WaitForExit();
-
+                    string output = p.StandardOutput.ReadToEnd();
+                    p.WaitForExit();
                     string pidTag = " " + processId;
                     string epTag = serverIP + ":" + serverPort;
-                    string[] lines = output.Split(new char[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-                    foreach (string line in lines)
+                    foreach (string line in output.Split(new char[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
                     {
                         if (line.Contains(pidTag) && line.Contains("ESTABLISHED") && line.Contains(epTag))
                             return true;
                     }
                 }
             }
-            catch
-            {
-            }
+            catch { }
             return false;
         }
 
@@ -756,7 +742,6 @@ namespace KartRider
             string appDir = AppDomain.CurrentDomain.BaseDirectory;
             if (File.Exists(Path.Combine(appDir, "KartRider.exe")) && File.Exists(Path.Combine(appDir, "KartRider.pin")))
                 return appDir;
-
             try
             {
                 string gp = (string)Microsoft.Win32.Registry.GetValue(
@@ -766,15 +751,13 @@ namespace KartRider
                     File.Exists(Path.Combine(gp, "KartRider.pin")))
                     return Path.GetFullPath(gp);
             }
-            catch
-            {
-            }
+            catch { }
             return null;
         }
 
         // ============ 配置保存（MiniLauncher.ini, UTF-8） ============
 
-        private void SaveConfig(string ip, string port, string name)
+        private void SaveConfig(string ip, string port, string username, string nickname)
         {
             try
             {
@@ -782,32 +765,11 @@ namespace KartRider
                 string content = "[Launcher]\r\n" +
                     "ServerIP=" + ip + "\r\n" +
                     "ServerPort=" + port + "\r\n" +
-                    "Nickname=" + name + "\r\n";
+                    "Username=" + username + "\r\n" +
+                    "Nickname=" + nickname + "\r\n";
                 File.WriteAllText(path, content, Encoding.UTF8);
             }
-            catch
-            {
-            }
-        }
-
-        /// <summary>
-        /// 保存账号信息到配置（账号名+绑定昵称，不保存密码）
-        /// </summary>
-        private void SaveAccountConfig(string username, string nickname)
-        {
-            try
-            {
-                string path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "MiniLauncher.ini");
-                string content = "[Launcher]\r\n" +
-                    "ServerIP=" + txtIp.Text.Trim() + "\r\n" +
-                    "ServerPort=" + txtPort.Text.Trim() + "\r\n" +
-                    "Nickname=" + nickname + "\r\n" +
-                    "Username=" + username + "\r\n";
-                File.WriteAllText(path, content, Encoding.UTF8);
-            }
-            catch
-            {
-            }
+            catch { }
         }
 
         private void LoadConfig()
@@ -815,29 +777,20 @@ namespace KartRider
             try
             {
                 string path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "MiniLauncher.ini");
-                if (!File.Exists(path))
-                    return;
-
+                if (!File.Exists(path)) return;
                 foreach (string line in File.ReadAllLines(path, Encoding.UTF8))
                 {
                     int idx = line.IndexOf('=');
-                    if (idx <= 0)
-                        continue;
+                    if (idx <= 0) continue;
                     string key = line.Substring(0, idx).Trim();
                     string value = line.Substring(idx + 1).Trim();
-                    if (key == "ServerIP")
-                        txtIp.Text = value;
-                    else if (key == "ServerPort")
-                        txtPort.Text = value;
-                    else if (key == "Nickname")
-                        txtName.Text = value;
-                    else if (key == "Username")
-                        txtUsername.Text = value;
+                    if (key == "ServerIP") txtIp.Text = value;
+                    else if (key == "ServerPort") txtPort.Text = value;
+                    else if (key == "Username") txtUser.Text = value;
+                    else if (key == "Nickname") { _boundNickname = value; }
                 }
             }
-            catch
-            {
-            }
+            catch { }
         }
 
         // ============ 工具 ============
@@ -851,34 +804,20 @@ namespace KartRider
 
         private static string JsonEscape(string s)
         {
-            if (s == null)
-                return "";
-
+            if (s == null) return "";
             StringBuilder sb = new StringBuilder();
             foreach (char c in s)
             {
                 switch (c)
                 {
-                    case '"':
-                        sb.Append("\\\"");
-                        break;
-                    case '\\':
-                        sb.Append("\\\\");
-                        break;
-                    case '\n':
-                        sb.Append("\\n");
-                        break;
-                    case '\r':
-                        sb.Append("\\r");
-                        break;
-                    case '\t':
-                        sb.Append("\\t");
-                        break;
+                    case '"': sb.Append("\\\""); break;
+                    case '\\': sb.Append("\\\\"); break;
+                    case '\n': sb.Append("\\n"); break;
+                    case '\r': sb.Append("\\r"); break;
+                    case '\t': sb.Append("\\t"); break;
                     default:
-                        if (c < 0x20)
-                            sb.Append(string.Format("\\u{0:X4}", (int)c));
-                        else
-                            sb.Append(c);
+                        if (c < 0x20) sb.Append(string.Format("\\u{0:X4}", (int)c));
+                        else sb.Append(c);
                         break;
                 }
             }
@@ -887,19 +826,11 @@ namespace KartRider
 
         private void Log(string msg)
         {
-            if (txtLog == null || txtLog.IsDisposed)
-                return;
-
+            if (txtLog == null || txtLog.IsDisposed) return;
             string line = "[" + DateTime.Now.ToString("HH:mm:ss") + "] " + msg + "\r\n";
             if (txtLog.InvokeRequired)
             {
-                try
-                {
-                    txtLog.BeginInvoke(new Action<string>(AppendLog), line);
-                }
-                catch
-                {
-                }
+                try { txtLog.BeginInvoke(new Action<string>(AppendLog), line); } catch { }
             }
             else
             {
