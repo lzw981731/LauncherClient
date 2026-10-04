@@ -8,6 +8,9 @@ on:
       - '.github/workflows/build-minilauncher.yml'
   workflow_dispatch:
 
+permissions:
+  contents: write   # 需要写权限才能创建 Release
+
 jobs:
   build:
     runs-on: windows-latest
@@ -34,3 +37,13 @@ jobs:
           name: MiniLauncher
           path: MiniLauncher/MiniLauncher.exe
           retention-days: 30
+
+      # 发布到 GitHub Release（tag 按日期生成，便于一键下载）
+      - name: Publish to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: minilauncher-${{ github.run_number }}
+          name: MiniLauncher ${{ github.run_number }}
+          files: MiniLauncher/MiniLauncher.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

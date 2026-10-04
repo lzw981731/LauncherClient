@@ -62,5 +62,8 @@
 
   <ItemGroup>
     <PackageReference Include="Ionic.Zlib.Core" Version="1.0.0" />
+    <!-- MiniLauncher 是独立程序，用 csc 单独编译（见 build-minilauncher.yml），
+         若被 SDK-style 自动包含进来会与此主项目同名类(OutPacket/PacketBase 等)冲突导致 CS0111。 -->
+    <Compile Remove="MiniLauncher\**" />
   </ItemGroup>
 </Project>
